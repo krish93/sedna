@@ -1,0 +1,58 @@
+#!/bin/bash
+
+bin=`dirname "${BASH_SOURCE-$0}"`
+bin=`cd "$bin"; pwd`
+
+. "$bin"/sedna-config.sh
+
+function print_usage(){
+	echo "Usage: sedna [--config conf-dir] COMMAND"
+	echo "       where COMMAND is one of:"
+	echo "  service        run Sedna service locally "
+	echo "   zktest        run ZooKeeper W/R test suit"
+	echo "   sdtest        run Sedna W/R test suit"
+}
+
+function print_welcome(){
+	echo "Welcome to Sedna"
+}
+
+print_welcome
+
+if [ $# = 0 ]; then
+	print_usage
+	exit
+fi
+
+COMMAND=$1
+shift
+
+if [ "$COMMAND" = "service" ]; then
+	CLASS=org.mcl.Sedna.main.Main
+elif [ "$COMMAND" = "zktest" ]; then
+	CLASS=org.mcl.Sedna.Exp.ZKReadTest
+elif [ "$COMMAND" = "sdtest" ]; then
+	CLASS=org.mcl.Sedna.Exp.SednaReadTest
+else
+	echo $COMMAND - invalid command
+	print_usage
+	exit
+fi
+
+CLASSPATH=${CLASSPATH}:$SEDNA_HOME/build/classes
+
+CLASSPATH=${CLASSPATH}:${SEDNA_HOME}/build
+
+CLASSPATH=${CLASSPATH}:${SEDNA_HOME}/build/test/classes
+
+for f in $SEDNA_HOME/dist/*.jar; do
+	CLASSPATH=${CLASSPATH}:$f;
+done
+
+for f in $SEDNA_HOME/lib/*.jar; do
+	CLASSPATH=${CLASSPATH}:$f;
+done
+
+export CLASSPATH
+
+exec "$JAVA" $JAVA_HEAP_MAX $CLASS "$@"
