@@ -448,7 +448,7 @@ Copyright (C) 2009 Free Software Foundation, Inc.
 This config.status script is free software; the Free Software Foundation
 gives unlimited permission to copy, distribute and modify it."
 
-ac_pwd='/Users/daidong/Documents/workspace/Sedna/memcached'
+ac_pwd='/Users/daidong/NetBeansProjects/GoogleCode/sedna/memcached'
 srcdir='.'
 INSTALL='/usr/bin/install -c'
 MKDIR_P='./install-sh -c -d'
@@ -663,7 +663,7 @@ S["CFLAGS"]="-g -O2 -pthread -Wall -Werror -pedantic -Wmissing-prototypes -Wmiss
 S["CC"]="gcc -std=gnu99"
 S["am__untar"]="${AMTAR} xf -"
 S["am__tar"]="${AMTAR} chof - \"$$tardir\""
-S["AMTAR"]="${SHELL} /Users/daidong/Documents/workspace/Sedna/memcached/missing --run tar"
+S["AMTAR"]="${SHELL} /Users/daidong/NetBeansProjects/GoogleCode/sedna/memcached/missing --run tar"
 S["am__leading_dot"]="."
 S["SET_MAKE"]=""
 S["AWK"]="awk"
@@ -671,12 +671,12 @@ S["mkdir_p"]="$(top_builddir)/./install-sh -c -d"
 S["MKDIR_P"]="./install-sh -c -d"
 S["INSTALL_STRIP_PROGRAM"]="$(install_sh) -c -s"
 S["STRIP"]=""
-S["install_sh"]="${SHELL} /Users/daidong/Documents/workspace/Sedna/memcached/install-sh"
-S["MAKEINFO"]="${SHELL} /Users/daidong/Documents/workspace/Sedna/memcached/missing --run makeinfo"
-S["AUTOHEADER"]="${SHELL} /Users/daidong/Documents/workspace/Sedna/memcached/missing --run autoheader"
-S["AUTOMAKE"]="${SHELL} /Users/daidong/Documents/workspace/Sedna/memcached/missing --run automake-1.11"
-S["AUTOCONF"]="${SHELL} /Users/daidong/Documents/workspace/Sedna/memcached/missing --run autoconf"
-S["ACLOCAL"]="${SHELL} /Users/daidong/Documents/workspace/Sedna/memcached/missing --run aclocal-1.11"
+S["install_sh"]="${SHELL} /Users/daidong/NetBeansProjects/GoogleCode/sedna/memcached/install-sh"
+S["MAKEINFO"]="${SHELL} /Users/daidong/NetBeansProjects/GoogleCode/sedna/memcached/missing --run makeinfo"
+S["AUTOHEADER"]="${SHELL} /Users/daidong/NetBeansProjects/GoogleCode/sedna/memcached/missing --run autoheader"
+S["AUTOMAKE"]="${SHELL} /Users/daidong/NetBeansProjects/GoogleCode/sedna/memcached/missing --run automake-1.11"
+S["AUTOCONF"]="${SHELL} /Users/daidong/NetBeansProjects/GoogleCode/sedna/memcached/missing --run autoconf"
+S["ACLOCAL"]="${SHELL} /Users/daidong/NetBeansProjects/GoogleCode/sedna/memcached/missing --run aclocal-1.11"
 S["VERSION"]="1.4.6"
 S["PACKAGE"]="memcached"
 S["CYGPATH_W"]="echo"

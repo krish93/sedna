@@ -55,11 +55,11 @@ public class SednaReadTest {
             long wt = srt.run_test(i);
             System.out.println("*** Write Time: " + wt);
             fw.write(i + "\t" + wt + "\n");
-            /*
+            
             long rt = srr.run_test(i);
             System.out.println("*** Read  Time: " + rt);
             fr.write(i + "\t" + rt + "\n");
-            */
+            
             
         //}
         fw.flush();
