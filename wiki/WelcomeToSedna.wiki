@@ -1,0 +1,35 @@
+#labels Featured,Phase-Design,Phase-Implementation
+#A General Introduction to Sedna storage system
+
+= 1. Introduction =
+
+Add your content here.
+
+= 2. Install =
+
+== 2.1 Pre-require ==
+
+== 2.2 System Modify for Linux ==
+
+== 2.3 Configuration ==
+
+== 2.4 Begin Sedna ==
+
+== 2.5 Stop Sedna ==
+
+= 3. Usage =
+
+== 3.1 Data Read ==
+
+== 3.2 Data Write ==
+
+= 4. Benchmark =
+
+= 5. Technique Paper =
+
+= 6. Others =
+
+Add your content here.  Format your content with:
+  * Text in *bold* or _italic_
+  * Headings, paragraphs, and lists
+  * Automatic links to other wiki pages
