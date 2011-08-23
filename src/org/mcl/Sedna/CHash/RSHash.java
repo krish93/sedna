@@ -31,8 +31,9 @@ public class RSHash implements HashAlgorithm{
 
     public int virt(String key) {
         int hashId = hash(key);
-        int average = Integer.MAX_VALUE / vNums;
-        int index = hashId / average;
+        //int average = Integer.MAX_VALUE / vNums;
+        int average = vNums;
+        int index = hashId % average;
         return index;
     }
     

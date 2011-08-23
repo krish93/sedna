@@ -44,32 +44,47 @@ class SednaHandler implements IDataHandler, IIdleTimeoutHandler,
     }
 
     public boolean onData(INonBlockingConnection inbc) throws IOException, BufferUnderflowException, ClosedChannelException, MaxReadSizeExceededException {
-
-        byte[] bytes = inbc.readBytesByDelimiter("\r\n");
-
-        int readTimes = Integer.parseInt(new String(bytes));
         
-        bytes = inbc.readBytesByDelimiter("\r\n");
-        //String commandLen = new String(bytes);
-        //int clen = Integer.parseInt(commandLen);
-        String command = inbc.readStringByDelimiter("\r\n");
+        String command = null;
+        HashMap<String, String> args = null;
         
-        readTimes--;
+        inbc.markReadPosition();
         
-        HashMap<String, String> args = new HashMap<String, String>();
-
-        for (int i = 0; i < readTimes; i++){
-            byte[] argLength = inbc.readBytesByDelimiter("\r\n");
-            //String al = new String(argLength);
-            //LOG.debug("Get arg"+i+"size: "+al);
-            //int argSize = Integer.parseInt(al);
-            String arg = inbc.readStringByDelimiter("\r\n");
-            //byte[] arg = inbc.readBytesByLength(argSize);
-            LOG.debug("Get arg"+i+": " + arg);
-            args.put("arg"+i, arg);
+        try{
+           
+            byte[] bytes = inbc.readBytesByDelimiter("\r\n");
+            
+            int readTimes = Integer.parseInt(new String(bytes));
+            
+            bytes = inbc.readBytesByDelimiter("\r\n");
+            //String commandLen = new String(bytes);
+            //int clen = Integer.parseInt(commandLen);
+            command = inbc.readStringByDelimiter("\r\n");
+            
+            readTimes--;
+            
+            args = new HashMap<String, String>();
+            
+            for (int i = 0; i < readTimes; i++){
+                byte[] argLength = inbc.readBytesByDelimiter("\r\n");
+                //String al = new String(argLength);
+                //LOG.debug("Get arg"+i+"size: "+al);
+                //int argSize = Integer.parseInt(al);
+                String arg = inbc.readStringByDelimiter("\r\n");
+                //byte[] arg = inbc.readBytesByLength(argSize);
+                LOG.debug("Get arg"+i+": " + arg);
+                args.put("arg"+i, arg);
+            }
+        } catch (BufferUnderflowException bue){
+            inbc.resetToReadMark();
+            return true;
+        } catch (NumberFormatException nfe){
+            inbc.resetToReadMark();
+            return true;
         }
-
+        
         LOG.debug("SednaHandler command: " + command);
+        
         SednaProtocol.process(command, args, sed, inbc);
         return true;
     }

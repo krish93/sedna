@@ -1270,7 +1270,7 @@ public class MemCachedClient {
 	 */
 	//@TODO: added by Daidong
 	public boolean duplicate(String vnode, String host){
-		return client.transfer(vnode, host);
+		return client.duplicate(vnode, host);
 	}
 	/**
 	 * Retrieves stats for all servers.

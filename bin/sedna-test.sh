@@ -28,7 +28,7 @@ if [ "$COMMAND" = "zk" ]; then
     "$SEDNA_COMMON_HOME"/bin/sedna-daemon.sh --script "$bin"/sedna zktest zktest 0
     "$SEDNA_COMMON_HOME"/bin/sedna-daemons.sh --script "$bin"/sedna zktest zktest
 elif [ "$COMMAND" = "sedna" ]; then
-    "$SEDNA_COMMON_HOME"/bin/sedna-daemon.sh --script "$bin"/sedna sdtest sdtest
-    "$SEDNA_COMMON_HOME"/bin/sedna-daemon.sh --script "$bin"/sedna sdtest sdtest
+    "$SEDNA_COMMON_HOME"/bin/sedna-daemon.sh --script "$bin"/sedna sdtest sdtest 0
+    "$SEDNA_COMMON_HOME"/bin/sedna-daemons.sh --script "$bin"/sedna sdtest sdtest
 fi
     

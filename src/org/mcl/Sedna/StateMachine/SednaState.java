@@ -15,8 +15,8 @@ import org.xsocket.connection.INonBlockingConnection;
  */
 public interface SednaState {
 
-    public boolean get(String Key, INonBlockingConnection conn) throws IOException, BufferOverflowException;
-    public boolean set(String Key, String Value, INonBlockingConnection conn) throws IOException, BufferOverflowException;
+    public boolean get(String session, String Key, INonBlockingConnection conn) throws IOException, BufferOverflowException;
+    public boolean set(String session, String Key, String Value, INonBlockingConnection conn) throws IOException, BufferOverflowException;
     public Object cget(String Key, INonBlockingConnection conn) throws IOException, BufferOverflowException;
     public boolean cset(String Key, String Value, INonBlockingConnection conn) throws IOException, BufferOverflowException;
     public void dataMoveOut(String rnode, String vnode, int type, INonBlockingConnection conn) throws IOException, BufferOverflowException;

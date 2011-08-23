@@ -5,14 +5,18 @@
 
 package org.mcl.Sedna.Cluster;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.apache.log4j.Logger;
+import org.mcl.Sedna.Communication.NonBlockSender;
+import org.mcl.Sedna.Communication.Session;
 import org.mcl.Sedna.Utils.MD5;
 import org.xsocket.connection.INonBlockingConnection;
 
@@ -30,7 +34,7 @@ public class Cluster {
     
     private int rnodeNum = 0;
     private int vnodeNum = 0;
-    private HashMap<String, Boolean> rnodes = null;
+    private ConcurrentHashMap<String, Boolean> rnodes = null;
     //private HashMap<String, String> vnodes = null;
     private ConcurrentHashMap<String, String> vnodes = null;
     private CopyOnWriteArrayList<String> vNodeStored = null;
@@ -43,8 +47,11 @@ public class Cluster {
     
     private HashMap<String, String> moveOutTargetTable = null;
     
+    private ConcurrentHashMap<String, NonBlockSender> coreSocketPool = null;
+    private ConcurrentHashMap<Long, Session> sessionTable = null;
+    
     public Cluster(){
-        rnodes = new HashMap<String, Boolean>();
+        rnodes = new ConcurrentHashMap<String, Boolean>();
         //vnodes = new HashMap<String, String>();
         vnodes = new ConcurrentHashMap<String, String>();
         vNodeStored = new CopyOnWriteArrayList<String>();
@@ -54,105 +61,30 @@ public class Cluster {
         replyTable = new HashMap<INonBlockingConnection, Boolean>();
         versionTable = new ConcurrentHashMap<INonBlockingConnection, String>();
         moveOutTargetTable = new HashMap<String, String>();
+        coreSocketPool = new ConcurrentHashMap<String, NonBlockSender>();
+        sessionTable = new ConcurrentHashMap<Long, Session>();
     }
 
+    public void setSession(long id, Session s){
+        sessionTable.put(id, s);
+    }
+    public Session getSession(long id){
+        return sessionTable.get(id);
+    }
+    public void addSenderInPool(String ipPort, NonBlockSender nbc){
+        coreSocketPool.putIfAbsent(ipPort, nbc);
+    }
+    public void forceUpdateSenderInPool(String ipPort, NonBlockSender nbc){
+        coreSocketPool.put(ipPort, nbc);
+    }
+    public NonBlockSender getSenderInPool(String ipPort){
+        return coreSocketPool.get(ipPort);
+    }
+    
     public Cluster(int rnodes, int vnodes){
         this();
         this.rnodeNum = rnodes;
         this.vnodeNum = vnodes;
-    }
-
-    public int incOK(INonBlockingConnection nbc, String value){
-        synchronized(QuorumOK){
-            if (value.equalsIgnoreCase("ok")){
-            
-                QuorumOK.putIfAbsent(nbc, 0);
-                QuorumOK.replace(nbc, QuorumOK.get(nbc) + 1);
-                return QuorumOK.get(nbc);
-            } else {
-                return QuorumOK.contains(nbc)?QuorumOK.get(nbc):0;
-            }
-        }
-    }
-    public int incIndex(INonBlockingConnection nbc){
-        synchronized(QuorumIndex){
-            QuorumIndex.putIfAbsent(nbc, 0);
-            QuorumIndex.replace(nbc, QuorumIndex.get(nbc)+1);
-            return QuorumIndex.get(nbc);
-        }
-    }
-    public boolean quorumOK(INonBlockingConnection nbc, String nmember) {
-        synchronized (versionTable) {
-            String old = versionTable.get(nbc);
-            if (old == null) {
-                versionTable.put(nbc, nmember);
-                return false;
-            } else {
-                String[] al = old.split(",");
-                for (String s:al){
-                    if (s.equals(nmember)){
-                        return true;
-                    }
-                }
-                String n = old + "," + nmember;
-                versionTable.put(nbc, n);
-                return false;
-            }
-        }
-    }
-    public int quorumAdd(INonBlockingConnection nbc, String value){
-        //String version = MD5.getMD5(value.getBytes());
-        String version = value;
-        synchronized(versionTable){
-            String old = versionTable.get(nbc);
-            String n = "";
-            versionTable.putIfAbsent(nbc, "");
-            versionTable.replace(nbc, versionTable.get(nbc)+","+version);
-            return n.split(",").length;
-        }
-    }
-    public String quorumOK(INonBlockingConnection nbc, int majority){
-        String versions = versionTable.get(nbc);
-        String[] v = versions.split(",");
-        HashMap<String, Integer> quorum = new HashMap<String, Integer>();
-        for (String version:v){
-            if (version.equals(""))
-                continue;
-            LOG.debug("qurumOK get version: " + version);
-            if (!quorum.containsKey(version)){
-                quorum.put(version, 1);
-                if (1 >= majority){
-                    return version;
-                }
-            } else {
-                quorum.put(version, quorum.get(version)+1);
-                if (quorum.get(version) >= majority){
-                    return version;
-                }
-            }
-        }
-        return null;
-    }
-    public void quorumRemove(INonBlockingConnection nbc){
-        versionTable.remove(nbc);
-    }
-    public int quorumCount(INonBlockingConnection nbc){
-        if (versionTable.get(nbc) == null)
-            return 0;
-        return versionTable.get(nbc).split("||").length;
-    }
-
-            
-    public void setReply(INonBlockingConnection nbc){
-        replyTable.put(nbc, Boolean.TRUE);
-    }
-    public boolean isReplied(INonBlockingConnection nbc){
-        if (replyTable.get(nbc) == null)
-            return false;
-        return replyTable.get(nbc);
-    }
-    public void removeReply(INonBlockingConnection nbc){
-        replyTable.remove(nbc);
     }
 
     public int getVirtNodeNum(){
@@ -171,6 +103,11 @@ public class Cluster {
         aioTable.remove(s);
     }
     
+    public Object[] getRealNodes(){
+         Set<String> rs = rnodes.keySet();
+         Object[] RNodeList = rs.toArray();
+         return RNodeList;
+    }
     public void addRealNode(String node){
         rnodes.put(node, Boolean.TRUE);
     }
@@ -189,10 +126,10 @@ public class Cluster {
     }
     
     public String[] getVnodeItems(String vnode){
-        if (vnodes.get(vnode) == null){
+        String rvmap = vnodes.get(vnode);
+        if (rvmap == null)
             return null;
-        }
-        return vnodes.get(vnode).split(",");
+        return rvmap.split(",");
     }
 
     public void setVnodeItem(String vnode, String item){
@@ -223,19 +160,20 @@ public class Cluster {
     public String getRnode(String[] excepts){
         String rtn = null;
         Random R = new Random(System.currentTimeMillis());
-        Iterator iter = rnodes.keySet().iterator();
+        
+        Set<String> rs = rnodes.keySet();
+        Object[] RNodeList = rs.toArray();
+        
         boolean again = false;
         
         if (rnodes.size() <= excepts.length)
             return null;
         
         while (true){
-            int times = R.nextInt(rnodes.size());
-            while (iter.hasNext() && (times--) > 0) {
-                rtn = (String)iter.next();
-            }
-            for (int index = 0; index < excepts.length; index++) {
-                if (rtn.equals(excepts[index])) {
+            int index = R.nextInt(rnodes.size());
+            rtn = (String)RNodeList[index];
+            for (String e:excepts){
+                if (rtn.equals(e)){
                     again = true;
                     break;
                 }

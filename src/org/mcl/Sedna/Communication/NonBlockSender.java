@@ -32,11 +32,18 @@ public class NonBlockSender {
 
     private INonBlockingConnection nbc = null;
 
-    public NonBlockSender(String host, int port, IHandler handler) throws IOException{
+    public NonBlockSender(String host, int port, IHandler handler){
         this.host = host;
         this.port = port;
+        int tries = 3;
 
-        nbc = new NonBlockingConnection(host, port, handler);
+        while(tries-- > 0 && nbc == null){
+            try{
+                nbc = new NonBlockingConnection(host, port, handler);
+            } catch (IOException ex) {
+                LOG.error("NonBlockSender Error: IOException " + host + ":" + port + " Because: " + ex.getMessage());
+            }
+        }
         
     }
     public INonBlockingConnection getConnection(){

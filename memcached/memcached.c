@@ -12,7 +12,6 @@
  *  Authors:
  *      Anatoly Vorobey <mellon@pobox.com>
  *      Brad Fitzpatrick <brad@danga.com>
- *      Chen Tao <ustcChentao@gmail.com>
  */
 #include "memcached.h"
 #include <sys/stat.h>
@@ -23,17 +22,6 @@
 #include <sys/uio.h>
 #include <ctype.h>
 #include <stdarg.h>
-#include <sys/types.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <unistd.h>
-#include <stdio.h>
-#include <sys/ioctl.h>
-#include <net/if.h>
-#include <net/if_arp.h>
-#include <errno.h>
-#include <stdlib.h>
 
 /* some POSIX systems need the following definition
  * to get mlockall flags out of sys/mman.h.  */
@@ -107,11 +95,6 @@ static int add_iov(conn *c, const void *buf, int len);
 static int add_msghdr(conn *c);
 
 
-/* time handling */
-static void set_current_time(void);  /* update the global variable holding
-                              global 32-bit seconds-since-start time
-                              (to avoid 64 bit time_t) */
-
 static void conn_free(conn *c);
 
 /** exported globals **/
@@ -142,7 +125,7 @@ static struct event maxconnsevent;
 static void maxconns_handler(const int fd, const short which, void *arg) {
     struct timeval t = {.tv_sec = 0, .tv_usec = 10000};
 
-    if (allow_new_conns == false) {
+    if (fd == -42 || allow_new_conns == false) {
         /* reschedule in 10ms if we need to keep polling */
         evtimer_set(&maxconnsevent, maxconns_handler, 0);
         event_base_set(main_base, &maxconnsevent);
@@ -505,6 +488,10 @@ static void conn_cleanup(conn *c) {
         sasl_dispose(&c->sasl_conn);
         c->sasl_conn = NULL;
     }
+
+    if (IS_UDP(c->transport)) {
+        conn_set_state(c, conn_read);
+    }
 }
 
 /*
@@ -650,11 +637,10 @@ static void conn_set_state(conn *c, enum conn_states state) {
                     state_text(state));
         }
 
-        c->state = state;
-
         if (state == conn_write || state == conn_mwrite) {
             MEMCACHED_PROCESS_COMMAND_END(c->sfd, c->wbuf, c->wbytes);
         }
+        c->state = state;
     }
 }
 
@@ -2011,8 +1997,6 @@ static void process_bin_flush(conn *c) {
         exptime = ntohl(req->message.body.expiration);
     }
 
-    set_current_time();
-
     if (exptime > 0) {
         settings.oldest_live = realtime(exptime) - 1;
     } else {
@@ -2262,9 +2246,6 @@ typedef struct token_s {
 #define COMMAND_TOKEN 0
 #define SUBCOMMAND_TOKEN 1
 #define KEY_TOKEN 1
-
-#define HT_NUM 1 // added by Chen Tao
-#define IP_ADDR 2 // added by Chen Tao
 
 #define MAX_TOKENS 8
 
@@ -2749,6 +2730,12 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
     /* Ubuntu 8.04 breaks when I pass exptime to safe_strtol */
     exptime = exptime_int;
 
+    /* Negative exptimes can underflow and end up immortal. realtime() will
+       immediately expire values that are greater than REALTIME_MAXDELTA, but less
+       than process_started, so lets aim for that. */
+    if (exptime < 0)
+        exptime = REALTIME_MAXDELTA + 1;
+
     // does cas value exist?
     if (handle_cas) {
         if (!safe_strtoull(tokens[5].value, &req_cas_id)) {
@@ -2997,206 +2984,7 @@ static void process_verbosity_command(conn *c, token_t *tokens, const size_t nto
     out_string(c, "OK");
     return;
 }
-static int try_talk_buddy(char *buddy_ip){
-	struct sockaddr_in pin;
-	struct hostent *nlp_host;
-	while ((nlp_host = gethostbyname(buddy_ip)) == 0){
-		printf("Resove Error\n");
-	}
-	
-	bzero(&pin, sizeof(pin));
-	pin.sin_family = AF_INET;
-	pin.sin_addr.s_addr=((struct in_addr *)(nlp_host->h_addr))->s_addr;
-	pin.sin_port=htons(11211);
-	
-	int sd = socket(AF_INET, SOCK_STREAM, 0);
-	
-	while (connect(sd,(struct sockaddr*)&pin,sizeof(pin))==-1){
-		printf("Connect Error!\n");
-	}
-	
-	return sd;
-}
-static int char_len(char *chars){
-	char *c = chars;
-	int len = 0;
-	while ((*c)!='\0'){
-		len += 1;
-		c++;
-	}
-	return len;
-}
-static char* talk_to_buddy(int sd, char *msg){
-	int len = char_len(msg);
-	char *buf = malloc(sizeof(char)*1024*1024);
-	send(sd, msg, len, 0);
-	recv(sd, buf, 1024*1024, 0);
-	return buf;
-}
-/******************************************************************
- * Use to transfer data between nodes
- * author: ChenTao
- */
-static void get_local_ip(char *ip){
-	int sock;
-	struct sockaddr_in sin;
-	struct ifreq ifr;
-	sock = socket(AF_INET, SOCK_DGRAM, 0);
-	if (sock == -1)
-	{
-		perror("socket");
-	}
 
-	strncpy(ifr.ifr_name, "eth0", IFNAMSIZ);
-	ifr.ifr_name[IFNAMSIZ - 1] = 0;
-
-	if (ioctl(sock, SIOCGIFADDR, &ifr) < 0)
-	{
-		perror("ioctl");
-	}
-	memcpy(&sin, &ifr.ifr_addr, sizeof(sin));
-	sprintf(ip, "%s", inet_ntoa(sin.sin_addr));
-}
-
-static void process_transfer_command(conn *c, token_t *tokens, const size_t ntokens){
-	token_t *ht_num = &tokens[HT_NUM];
-	token_t *ip_addr = &tokens[IP_ADDR];
-	
-	char *address = ip_addr->value;
-	char command[64] = {0};
-	char reply[64] = {0};
-	char ip[64] = {0};
-	get_local_ip(ip);
-	sprintf(command, "transferht %s %s\r\n", ht_num->value, ip);
-	int sd = try_talk_buddy(address);
-	sprintf(reply, "%s", talk_to_buddy(sd, command));
-	close(sd);
-	if (strcmp(reply, "ok") == 0){
-		add_iov(c, "OK\r\n", 4);
-	} else {
-		add_iov(c, "FAIL\r\n", 6);
-	}
-	conn_set_state(c, conn_mwrite);
-	c->msgcurr = 0;
-}
-
-static void process_duplicate_command(conn *c, token_t *tokens, const size_t ntokens){
-	token_t *ht_num = &tokens[HT_NUM];
-	token_t *ip_addr = &tokens[IP_ADDR];
-
-	char *address = ip_addr->value;
-	char command[64] = {0};
-	char reply[64] = {0};
-	char ip[64] = {0};
-	get_local_ip(ip);
-	sprintf(command, "duplicateht %s %s\r\n", ht_num->value, ip);
-	int sd = try_talk_buddy(address);
-	sprintf(reply, "%s", talk_to_buddy(sd, command));
-	close(sd);
-	if (strcmp(reply, "ok") == 0){
-		add_iov(c, "OK\r\n", 4);
-	} else {
-		add_iov(c, "FAIL\r\n", 6);
-	}
-	conn_set_state(c, conn_mwrite);
-	c->msgcurr = 0;
-}
-static int init_remote4set(char *addr){
-	return try_talk_buddy(addr);
-}
-static void close_remote4set(int sd){
-	close(sd);
-}
-static int ask_remote_set(int sd, char *key, char *value){
-	printf("ask_remote_set\n");
-	int vlen = char_len(value) - 2;
-	//int sd = try_talk_buddy(addr);
-	char *command = malloc(1024*1024*sizeof(char));
-	memset(command, 0, 1024*1024*sizeof(char));
-	sprintf(command, "set %s 0 0 %d\r\n%s", key, vlen, value);
-	printf("command=%s\n",command);
-	char reply[64] = {0};
-	sprintf(reply, "%s", talk_to_buddy(sd, command));
-	printf("reply:%s\n",reply);
-	if (strcmp(reply, "STORED\r\n") == 0){
-		return 1;
-	} else {
-		return 0;
-	}
-}
-
-static void process_transferht_command(conn *c, token_t *tokens, const size_t ntokens){
-	token_t *ht_num = &tokens[HT_NUM];
-	token_t *ip_addr = &tokens[IP_ADDR];
-	char *address = ip_addr->value;
-
-	printf("hashtable num = %d.\n",atoi(ht_num ->value));
-
-	unsigned int hash_power = assoc_get_hashpower(atoi(ht_num ->value));
-	item **hashtable = assoc_find_hashtable(atoi(ht_num ->value));
-	item *it;
-
-	if(hashtable)
-		printf("hashtable find.\n");
-	int i = 0;
-	unsigned long end_count = (unsigned long)1<<(hash_power);
-	printf("End_count = %ld", end_count);
-
-	int sd = init_remote4set(address);
-	for(i=0 ; i< end_count ; i++){
-		for(it = hashtable[i]; NULL != it ; it = it->next){
-			if( 0 == ask_remote_set(sd, ITEM_key(it), ITEM_data(it)) ){
-				add_iov(c, "error", 5);
-				conn_set_state(c, conn_mwrite);
-				c->msgcurr = 0;
-				return;
-			}
-			item_unlink(it);
-		}
-	}
-	close_remote4set(sd);
-
-	add_iov(c, "ok", 2);
-	conn_set_state(c, conn_mwrite);
-	c->msgcurr = 0;
-}
-
-static void process_duplicateht_command(conn *c, token_t *tokens, const size_t ntokens){
-	token_t *ht_num = &tokens[HT_NUM];
-	token_t *ip_addr = &tokens[IP_ADDR];
-	char *address = ip_addr->value;
-
-	printf("hashtable num = %d.\n",atoi(ht_num ->value));
-
-	unsigned int hash_power = assoc_get_hashpower(atoi(ht_num ->value));
-	item **hashtable = assoc_find_hashtable(atoi(ht_num ->value));
-	item *it;
-
-	if(hashtable)
-		printf("hashtable find.\n");
-	int i = 0;
-	unsigned long end_count = (unsigned long)1<<(hash_power);
-	printf("End_count = %ld", end_count);
-
-	int sd = init_remote4set(address);
-	for(i=0 ; i< end_count ; i++){
-		for(it = hashtable[i]; NULL != it ; it = it->next){
-			if( 0 == ask_remote_set(sd, ITEM_key(it), ITEM_data(it)) ){
-				add_iov(c, "error", 5);
-				conn_set_state(c, conn_mwrite);
-				c->msgcurr = 0;
-				return;
-			}
-		}
-	}
-	close_remote4set(sd);
-
-	add_iov(c, "ok", 2);
-	conn_set_state(c, conn_mwrite);
-	c->msgcurr = 0;
-}
-
-/******************************************************************/
 static void process_command(conn *c, char *command) {
 
     token_t tokens[MAX_TOKENS];
@@ -3230,27 +3018,6 @@ static void process_command(conn *c, char *command) {
 
         process_get_command(c, tokens, ntokens, false);
 
-    }
-    /*
-     * this and next "else if" added by Chen Tao
-     */
-    else if(ntokens >= 3 &&
-    		(strcmp(tokens[COMMAND_TOKEN].value, "transfer") == 0)){
-
-    	process_transfer_command(c, tokens, ntokens);
-
-    } else if(ntokens >= 3 &&
-    		(strcmp(tokens[COMMAND_TOKEN].value, "duplicate") == 0)){
-
-    	process_duplicate_command(c, tokens, ntokens);
-    } else if(ntokens >= 3 &&
-    		(strcmp(tokens[COMMAND_TOKEN].value, "transferht") == 0)){
-
-    	process_transferht_command(c, tokens, ntokens);
-    }else if (ntokens >= 3 &&
-    		(strcmp(tokens[COMMAND_TOKEN].value, "duplicateht") == 0)){
-
-    	process_duplicateht_command(c, tokens, ntokens);
     } else if ((ntokens == 6 || ntokens == 7) &&
                ((strcmp(tokens[COMMAND_TOKEN].value, "add") == 0 && (comm = NREAD_ADD)) ||
                 (strcmp(tokens[COMMAND_TOKEN].value, "set") == 0 && (comm = NREAD_SET)) ||
@@ -3286,7 +3053,6 @@ static void process_command(conn *c, char *command) {
 
     } else if (ntokens >= 2 && ntokens <= 4 && (strcmp(tokens[COMMAND_TOKEN].value, "flush_all") == 0)) {
         time_t exptime = 0;
-        set_current_time();
 
         set_noreply_maybe(c, tokens, ntokens);
 
@@ -3500,7 +3266,7 @@ static enum try_read_result try_read_udp(conn *c) {
         res -= 8;
         memmove(c->rbuf, c->rbuf + 8, res);
 
-        c->rbytes += res;
+        c->rbytes = res;
         c->rcurr = c->rbuf;
         return READ_DATA_RECEIVED;
     }
@@ -3622,7 +3388,7 @@ void do_accept_new_conns(const bool do_accept) {
         stats.listen_disabled_num++;
         STATS_UNLOCK();
         allow_new_conns = false;
-        maxconns_handler(0, 0, 0);
+        maxconns_handler(-42, 0, 0);
     }
 }
 
@@ -4333,30 +4099,52 @@ static int server_socket_unix(const char *path, int access_mask) {
 volatile rel_time_t current_time;
 static struct event clockevent;
 
-/* time-sensitive callers can call it by hand with this, outside the normal ever-1-second timer */
-static void set_current_time(void) {
-    struct timeval timer;
-
-    gettimeofday(&timer, NULL);
-    current_time = (rel_time_t) (timer.tv_sec - process_started);
-}
-
+/* libevent uses a monotonic clock when available for event scheduling. Aside
+ * from jitter, simply ticking our internal timer here is accurate enough.
+ * Note that users who are setting explicit dates for expiration times *must*
+ * ensure their clocks are correct before starting memcached. */
 static void clock_handler(const int fd, const short which, void *arg) {
     struct timeval t = {.tv_sec = 1, .tv_usec = 0};
     static bool initialized = false;
+#if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
+    static bool monotonic = false;
+    static time_t monotonic_start;
+#endif
 
     if (initialized) {
         /* only delete the event if it's actually there. */
         evtimer_del(&clockevent);
     } else {
         initialized = true;
+        /* process_started is initialized to time() - 2. We initialize to 1 so
+         * flush_all won't underflow during tests. */
+#if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
+        struct timespec ts;
+        if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
+            monotonic = true;
+            monotonic_start = ts.tv_sec - 2;
+        }
+#endif
     }
 
     evtimer_set(&clockevent, clock_handler, 0);
     event_base_set(main_base, &clockevent);
     evtimer_add(&clockevent, &t);
 
-    set_current_time();
+#if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
+    if (monotonic) {
+        struct timespec ts;
+        if (clock_gettime(CLOCK_MONOTONIC, &ts) == -1)
+            return;
+        current_time = (rel_time_t) (ts.tv_sec - monotonic_start);
+        return;
+    }
+#endif
+    {
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        current_time = (rel_time_t) (tv.tv_sec - process_started);
+    }
 }
 
 static void usage(void) {

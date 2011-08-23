@@ -39,6 +39,8 @@ fi
 
 log=$SEDNA_LOG_DIR/sedna-$command-$HOSTNAME.log
 pid=$SEDNA_PID_DIR/sedna-$command.pid
+zkpid=$SEDNA_PID_DIR/zk.pid
+sedpid=$SEDNA_PID_DIR/sed.pid
 MEMCACHED_PORT=11211
 MEMCACHED_SIZE=2048m
 
@@ -65,7 +67,7 @@ case $startStop in
 		;;
 		
 	(stop)
-		
+		 
 		if [ -f $pid ]; then
 			if kill -0 `cat $pid` > /dev/null 2>&1; then
 				echo stopping $command
@@ -87,14 +89,16 @@ case $startStop in
 		echo starting ZooKeeper Test Suit...
 		cd "$SEDNA_HOME"
 		nohup $sednaScript $command "$@" > "$log" 2>&1 < /dev/null &
-        ;;
+                echo $! > $zkpid
+                ;;
 
     (sdtest)
 
 		echo starting Sedna Write/Read Test Suit...
 		cd "$SEDNA_HOME"
 		nohup $sednaScript $command "$@" > "$log" 2>&1 < /dev/null &
-        ;;
+                echo $! > $sedpid
+                ;;
 	(*)
 		echo $usage
 		exit 1

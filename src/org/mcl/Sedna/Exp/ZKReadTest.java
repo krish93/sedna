@@ -23,19 +23,21 @@ import org.mcl.Sedna.Configuration.Configuration;
 public class ZKReadTest {
     
     private ZooKeeper zk = null;
-    public static final String readTestDir = "/_test_alone";
-    public static final int RETRY = 3;
+    public static final String readTestDir = "/_test";
+    public int tried = 0;
     
     public ZKReadTest() throws IOException, KeeperException, InterruptedException{
         Configuration conf = new Configuration();
         String zkServers = conf.getValue("zookeeper_servers");
         zk = new ZooKeeper(zkServers, 3000, null);
+        checkAndCreate("");
     }
     
     private boolean assert_string(String a, String b){
         return a.equals(b);
     }
 
+    /*
     public void reset() throws InterruptedException, KeeperException{
         try {
             if (zk.exists(readTestDir, false) == null)
@@ -50,32 +52,59 @@ public class ZKReadTest {
             System.out.println("ZKReadTest reset KeeperException");
         }
     }
-
-    public void checkAndCreate() throws KeeperException, InterruptedException{
-        if (zk.exists(readTestDir, false) == null) {
-            zk.create(readTestDir, "".getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+     */
+    public String checkAndCreate(String dir) throws InterruptedException, KeeperException{
+        String d = "";
+        
+        try {
+            if ("".equals(dir)) {
+                d = readTestDir;
+            } else {
+                d = readTestDir + "/" + dir;
+            }
+            if (zk.exists(d, false) == null) {
+                zk.create(d, "".getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+            }
+            tried = 0;
+            
+        } catch (KeeperException ex) {
+            System.out.println("ZKReadTest checkAndCreate Node: " + d + " KeeperException");
+            tried++;
+            if (tried > 10) {
+                tried = 0;
+                return d;
+            } else {
+                return checkAndCreate(dir);
+            }
         }
+        return d;
     }
     
     public long run_test(int vn, int nid) throws InterruptedException, KeeperException{
 
-        checkAndCreate();
-        
+        String dir = checkAndCreate(String.format("%08d", nid));
+        int tried = 0;
         long st = System.currentTimeMillis();
         
-        for (int index = nid; index < (vn + nid); index++){
+        for (int index = 0; index < vn; index++){
             try {
                 String i = String.format("%08d", index);
-                if (zk.exists(readTestDir + "/" + i, false) == null) {
-                    byte[] r = zk.getData(readTestDir+"/"+i, false, null);
+                if (zk.exists(dir + "/" + i, false) == null) {
+                    byte[] r = zk.getData(dir + "/" + i, false, null);
                     if (!assert_string(new String(r), i)){
                         System.out.println("Error, string assert is false!");
                         return -1;
                     }
                 }
             } catch (KeeperException ex) {
-                System.out.println("ZKReadTest KeeperException when check node: " + readTestDir + "/" + String.format("%08d", index));
-                index = index - 1;
+                System.out.println("ZKReadTest KeeperException when check node: " + dir + "/" + String.format("%08d", index));
+                tried++;
+                if (tried > 10){
+                    tried = 0;
+                    continue;
+                } else {
+                    index = index - 1;
+                }
             }
         }
 
@@ -96,15 +125,17 @@ public class ZKReadTest {
         FileWriter fr = new FileWriter("logs/read_test_plot.txt");
         
         System.out.println("----------ZK Performance Test-----------\n\n");
-        ZKWriteTest zktw = new ZKWriteTest();
+        //ZKWriteTest zktw = new ZKWriteTest();
         ZKReadTest zktr = new ZKReadTest();
-        
-        int startNum = 1000;
+
+        /*
+        int startNum = 125;
         int stopNum = 10000;
-        int step = 1000;
+        int step = 125;
         int i = 0;
-        
-        for (i = startNum ; i <= stopNum; i = i + step){
+        */
+        //for (i = startNum ; i <= stopNum; i = i + step){
+        int i = 10000;
             System.out.println("**************** vnode number: " + i + " ****************");
             
             /*
@@ -116,21 +147,19 @@ public class ZKReadTest {
             long test3 = zkt.test(i);
             double avg = (test1+test2+test3+0.0)/(3.0);
             */
-
-            zktr.reset();
             
-            long w_avg = zktw.test(i, nid * stopNum);
-            long r_avg = zktr.run_test(i, nid * stopNum);
+            //long w_avg = zktw.run_test(i, nid);
+            long r_avg = zktr.run_test(i, nid);
             
-            System.out.println("*** Write Average: " + w_avg + "\n");
+            //System.out.println("*** Write Average: " + w_avg + "\n");
             System.out.println("*** Read  Average: " + r_avg + "\n");
             
-            fw.write(i + "\t" + w_avg + "\n");
+            //fw.write(i + "\t" + w_avg + "\n");
             fr.write(i + "\t" + r_avg + "\n");
             //fw.flush();
-        }
-        fw.flush();
-        fw.close();
+        //}
+        //fw.flush();
+        //fw.close();
         fr.flush();
         fr.close();
     }

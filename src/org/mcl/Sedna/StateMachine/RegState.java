@@ -35,12 +35,12 @@ public class RegState implements SednaState{
         this.sed = s;
     }
 
-    public boolean get(String Key, INonBlockingConnection conn) throws IOException, BufferOverflowException{
+    public boolean get(String session, String Key, INonBlockingConnection conn) throws IOException, BufferOverflowException{
         LOG.error("In Reg State, There should not any get operation yet");
         return true;
     }
 
-    public boolean set(String Key, String Value, INonBlockingConnection conn) throws IOException, BufferOverflowException{
+    public boolean set(String session, String Key, String Value, INonBlockingConnection conn) throws IOException, BufferOverflowException{
         LOG.error("In Reg State, There should not any set operation yet");
         return true;
     }

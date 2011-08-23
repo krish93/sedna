@@ -11,6 +11,7 @@ import org.apache.log4j.Logger;
 import org.mcl.Sedna.Communication.SednaServer;
 import org.mcl.Sedna.Configuration.Configuration;
 import org.mcl.Sedna.LocalStorage.LocalMemCached;
+import org.mcl.Sedna.LocalStorage.OrgLocalMemCached;
 import org.xsocket.connection.INonBlockingConnection;
 
 /**
@@ -30,12 +31,12 @@ public class InitState implements SednaState{
         this.sed = s;
     }
 
-    public boolean get(String Key, INonBlockingConnection conn) throws IOException, BufferOverflowException{
+    public boolean get(String session, String Key, INonBlockingConnection conn) throws IOException, BufferOverflowException{
         LOG.error("In Init State, There should not any get operation yet");
         return true;
     }
 
-    public boolean set(String Key, String Value, INonBlockingConnection conn) throws IOException, BufferOverflowException{
+    public boolean set(String session, String Key, String Value, INonBlockingConnection conn) throws IOException, BufferOverflowException{
         LOG.error("In Init State, There should not any get operation yet");
         return true;
     }
@@ -74,7 +75,8 @@ public class InitState implements SednaState{
             sed.getServer().close();
         }
 
-        sed.setLocalStorage(new LocalMemCached(conf));
+        //sed.setLocalStorage(new LocalMemCached(conf));
+        sed.setLocalStorage(new OrgLocalMemCached(conf));
         sed.setServer(new SednaServer(conf, sed));
         sed.getServer().start();
         

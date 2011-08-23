@@ -32,10 +32,14 @@ public class BlockSender {
     public BlockSender(String h, int p){
         this.host = h;
         this.port = p;
-        try {
-            bc = new BlockingConnection(host, port);
-        } catch (IOException ex) {
-            LOG.error("BlockSender Error: IOException " + host + ":" + port);
+        int tries = 3;
+
+        while (tries-- > 0 && bc == null){
+            try {
+                bc = new BlockingConnection(host, port);
+            } catch (IOException ex) {
+                LOG.error("BlockSender Error: IOException " + host + ":" + port + " because: " + ex.getMessage());
+            }
         }
     }
 
@@ -45,6 +49,7 @@ public class BlockSender {
     public void send(String command){
         try {
             bc.write(command);
+            bc.flush();
         } catch (IOException ex) {
             LOG.error(command + "BlockSender Send Error IOException: " + host + ":" + port + " at " + bc);
         } catch (BufferOverflowException ex) {

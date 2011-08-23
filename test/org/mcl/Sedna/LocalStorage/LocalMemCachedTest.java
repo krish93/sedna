@@ -18,6 +18,6 @@ public class LocalMemCachedTest {
     
     public static void main(String[] args){
         LocalMemCached lmc = new LocalMemCached(new Configuration());
-        lmc.duplicate("97", "192.168.1.14");
+        lmc.duplicate("97", "192.168.1.15");
     }
 }

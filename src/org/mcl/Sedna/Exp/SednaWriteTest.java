@@ -22,15 +22,26 @@ public class SednaWriteTest {
         fs = new FileSystem(conf);
     }
     
-    public long run_test(int amount){
-
+    public String genValue(long size){
+        StringBuilder sb = new StringBuilder();
+        long times = size/10;
+        for (long i = 0; i < times; i++){
+            sb.append("abcdefghi");
+        }
+        return sb.toString();
+    }
+    
+    public long run_test(int amount, int nid){
+        long MAX = 1*1024;
+        long vs = MAX/amount;
+        String v = genValue(vs);
+        
         long st = System.currentTimeMillis();
         
-        for (int index = 0; index < amount; index++){
-            String key = "test-" + String.valueOf(index);
-            String value = String.valueOf(index);
+        for (int index = 0; index < amount * 1024; index++){
+            String key = "test-" + nid + "-" + String.valueOf(index);
 
-            fs.write(key, value);
+            fs.write(key, v);
         }
         
         long et = System.currentTimeMillis();

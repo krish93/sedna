@@ -3,7 +3,6 @@
 /** \file
  * The main memcached header holding commonly used data
  * structures and function prototypes.
- * modified by chentao
  */
 
 #ifdef HAVE_CONFIG_H
@@ -23,12 +22,6 @@
 #include "cache.h"
 
 #include "sasl_defs.h"
-
-///** add type bool
-// * add by chentao*/
-//typedef enum bool{
-//	false = 0 ,true
-//} bool;
 
 /** Maximum length of a key. */
 #define KEY_MAX_LENGTH 250

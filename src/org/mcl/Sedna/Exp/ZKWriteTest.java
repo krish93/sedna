@@ -24,25 +24,21 @@ import org.mcl.Sedna.Configuration.Configuration;
 public class ZKWriteTest {
 
     private ZooKeeper zk = null;
-    public static final String writeTestDir = "/_test_alone";
+    public static final String writeTestDir = "/_test";
+    public int tried = 0;
     
     public ZKWriteTest() throws IOException, KeeperException, InterruptedException{
         Configuration conf = new Configuration();
         String zkServers = conf.getValue("zookeeper_servers");
         zk = new ZooKeeper(zkServers, 3000, null);
-        /*
-        if (zk.exists(writeTestDir, false) == null) {
-            zk.create(writeTestDir, "".getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
-        }
-        */
+        checkAndCreate("");
     }
 
+    /*
     public void reset() throws InterruptedException, KeeperException{
         try {
             if (zk.exists(writeTestDir, false) == null)
                 return;
-            
-
             List<String> childs = zk.getChildren(writeTestDir, false);
             for (String v:childs){
                 zk.delete(writeTestDir + "/" + v, -1);
@@ -52,29 +48,60 @@ public class ZKWriteTest {
             System.out.println("ZKWriteTest reset KeeperException");
         }
     }
+     */
+    public String checkAndCreate(String dir) throws KeeperException, InterruptedException{
+        String d = "";
 
-    public void checkAndCreate() throws KeeperException, InterruptedException{
-        if (zk.exists(writeTestDir, false) == null) {
-            zk.create(writeTestDir, "".getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+        try {
+            if ("".equals(dir)) {
+                d = writeTestDir;
+            } else {
+                d = writeTestDir + "/" + dir;
+            }
+            if (zk.exists(d, false) == null) {
+                zk.create(d, "".getBytes(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+            }
+            tried = 0;
+
+        } catch (KeeperException ex) {
+            System.out.println("ZKWriteTest checkAndCreate Node: " + d + " KeeperException, Retries: " + tried);
+            tried++;
+            if (tried > 10) {
+                tried = 0;
+                return d;
+            } else {
+                return checkAndCreate(dir);
+            }
         }
+        return d;
     }
 
-    public long test(int vnodeNum, int nid) throws InterruptedException, KeeperException{
+    public long run_test(int vnodeNum, int nid) throws InterruptedException, KeeperException{
 
-        checkAndCreate();
+        String dir = checkAndCreate(String.format("%08d", nid));
+        int tried = 0;
         
         long st = System.currentTimeMillis();
         System.out.println("Begin Write at: " + st);
-        for (int index = nid; index < (nid + vnodeNum); index++) {
+
+        for (int index = 0; index < vnodeNum; index++) {
             try {
                 String i = String.format("%08d", index);
                 byte[] t = i.getBytes();
-                if (zk.exists(writeTestDir + "/" + i, false) == null) {
-                    zk.create(writeTestDir + "/" + i, t, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+                if (zk.exists(dir + "/" + i, false) == null) {
+                    zk.create(dir + "/" + i, t, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+                } else {
+                    zk.setData(dir + "/" + i, t, -1);
                 }
             } catch (KeeperException ex) {
-                System.out.println("ZKWriteTest KeeperException when check node: " + writeTestDir + "/" + String.format("%08d", index));
-                index = index - 1;
+                System.out.println("ZKWriteTest KeeperException when check node: " + dir + "/" + String.format("%08d", index));
+                tried++;
+                if (tried > 10){
+                    tried = 0;
+                    continue;
+                } else {
+                    index = index - 1;
+                }
             }
         }
         long et = System.currentTimeMillis();
@@ -82,11 +109,4 @@ public class ZKWriteTest {
         return (et - st);
 
     }
-
-    public static void main(String[] args) throws IOException, KeeperException, InterruptedException{
-        ZKWriteTest zkwt = new ZKWriteTest();
-        zkwt.reset();
-        System.out.println("Deleted");
-    }
-    
 }
