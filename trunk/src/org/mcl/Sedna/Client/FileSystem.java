@@ -57,7 +57,7 @@ public class FileSystem {
         String source = myRealName;
         Value nValue = new Value(key, value, farsee, source);
         String command = SednaProtocol.formCommand("cset", key, nValue.toString());
-        if (!bs.getConnection().isOpen()){
+        while (!bs.getConnection().isOpen()){
             LOG.error("connection: " + bs.getConnection() + " is closed, restart");
             bs = new BlockSender(ip, port);
         }
@@ -83,6 +83,9 @@ public class FileSystem {
     
     public String read_latest(String key){
         String command = SednaProtocol.formCommand("cget", key);
+        if (!bs.getConnection().isOpen()){
+            bs = new BlockSender(ip, port);
+        }
         bs.send(command);
         String value = SednaProtocol.deCompReply(bs.getConnection());
         if (value == null)

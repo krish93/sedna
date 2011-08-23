@@ -9,7 +9,8 @@ package org.mcl.Sedna.Utils;
  * @author daidong
  */
 public class MD5 {
-    public static String getMD5(byte[] source) {
+    public static String getMD5(String src) {
+        byte[] source = src.getBytes();
         String s = null;
         char hexDigits[] = {
             '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};

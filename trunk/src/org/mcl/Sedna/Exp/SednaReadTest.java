@@ -22,11 +22,11 @@ public class SednaReadTest {
         fs = new FileSystem(conf); 
     }
     
-    public long run_test(int amount){
-           
+    public long run_test(int amount, int nodeId){
+        
         long st = System.currentTimeMillis();
-        for (int index = 0; index < amount; index++){
-            String key = "test-" + String.valueOf(index);
+        for (int index = 0; index < amount*1024; index++){
+            String key = "test-" + nodeId + "-" + String.valueOf(index);
             String v = fs.read_latest(key);
         }
         
@@ -36,34 +36,37 @@ public class SednaReadTest {
     
     public static void main(String[] args) throws IOException{
         PropertyConfigurator.configure("conf/log4j.properties");
+        System.out.println("Sedna Test Suit, args length: " + args.length);
+        String nodeId = args[0];
+        System.out.println("args are: " + nodeId);
+        
+        int nid = 0;
+        if (nodeId != null)
+            nid = Integer.parseInt(nodeId);
         
         FileWriter fw = new FileWriter("logs/sedna_write_plot.txt");
         FileWriter fr = new FileWriter("logs/sedna_read_plot.txt");
         
-        int startNum = 100;
-        int stopNum = 5000;
-        int step = 100;
-        int i = 30000;
-        
-        //for (i = startNum; i <= stopNum; i = i + step){
-            SednaWriteTest srt = new SednaWriteTest();
-            SednaReadTest srr = new SednaReadTest();
-            
-            System.out.println("**************** Read Test number: " + i + " ****************");
 
-            
-            long wt = srt.run_test(i);
-            System.out.println("*** Write Time: " + wt);
-            fw.write(i + "\t" + wt + "\n");
-            
-            long rt = srr.run_test(i);
-            System.out.println("*** Read  Time: " + rt);
-            fr.write(i + "\t" + rt + "\n");
-            
-            
-        //}
+        int i = 10;
+        
+
+        SednaWriteTest srt = new SednaWriteTest();
+        SednaReadTest srr = new SednaReadTest();
+
+        System.out.println("**************** Read Test number: " + i + " ****************");
+
+
+        long wt = srt.run_test(i, nid);
+        System.out.println("*** Write Time: " + wt);
+        fw.write(i + "\t" + wt + "\n");
         fw.flush();
         fw.close();
+
+        
+        long rt = srr.run_test(i, nid);
+        System.out.println("*** Read  Time: " + rt);
+        fr.write(i + "\t" + rt + "\n");
         fr.flush();
         fr.close();
     }

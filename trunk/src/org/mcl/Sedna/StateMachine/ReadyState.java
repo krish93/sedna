@@ -5,9 +5,9 @@
 package org.mcl.Sedna.StateMachine;
 
 import java.io.IOException;
-import java.net.BindException;
 import java.nio.BufferOverflowException;
 import java.util.Random;
+import java.util.concurrent.Executors;
 import org.apache.log4j.Logger;
 import org.apache.zookeeper.KeeperException;
 import org.mcl.Sedna.Configuration.Configuration;
@@ -15,8 +15,9 @@ import org.mcl.Sedna.Tasks.DataMoveInTask;
 import org.mcl.Sedna.Cluster.Cluster;
 import org.mcl.Sedna.Communication.BlockSender;
 import org.mcl.Sedna.Communication.NonBlockSender;
-import org.mcl.Sedna.Communication.WriteQuorumHandler;
-import org.mcl.Sedna.Communication.ReadQuorumHandler;
+import org.mcl.Sedna.Communication.RQuorumHandler;
+import org.mcl.Sedna.Communication.Session;
+import org.mcl.Sedna.Communication.WQuorumHandler;
 import org.mcl.Sedna.LocalStorage.LocalStorage;
 import org.mcl.Sedna.LocalStorage.Value;
 import org.mcl.Sedna.Protocol.SednaProtocol;
@@ -47,12 +48,12 @@ class ReadyState implements SednaState {
         this.cluster = sed.getCluster();
     }
 
-    public boolean get(String Key, INonBlockingConnection conn) throws IOException, BufferOverflowException {
+    public boolean get(String session, String Key, INonBlockingConnection conn) throws IOException, BufferOverflowException {
         int virt = sed.getCHash().virt((String) Key);
         String vNode = String.format("%08d", virt);
         LOG.debug("get key: " + Key + " vnode: " + vNode + " connection: " + conn);
         if (!sed.getCluster().vnodeStored().contains(vNode)) {
-            String reply = SednaProtocol.formReply("reject");
+            String reply = SednaProtocol.formReply(session, "reject");
             LOG.debug("get key: " + Key + " reply: " + reply);
             conn.write(reply);
             conn.flush();
@@ -60,7 +61,7 @@ class ReadyState implements SednaState {
             return false;
         } else {
             String value = (String) sed.getLocalStorage().get((String) Key);
-            String reply = SednaProtocol.formReply(value);
+            String reply = SednaProtocol.formReply(session, value);
             LOG.debug("get key: " + Key + " reply: " + reply + " to connection: " + conn);
             conn.write(reply);
             conn.flush();
@@ -69,13 +70,13 @@ class ReadyState implements SednaState {
         return true;
     }
 
-    public boolean set(String Key, String value, INonBlockingConnection conn) throws IOException, BufferOverflowException {
+    public boolean set(String session, String Key, String value, INonBlockingConnection conn) throws IOException, BufferOverflowException {
         LOG.debug("In ReadyState, Set Command, Key: " + Key + " Value: " + value + " connection: " + conn);
         int virt = sed.getCHash().virt((String) Key);
         String vNode = String.format("%08d", virt);
         
         if (!sed.getCluster().vnodeStored().contains(vNode)) {
-            conn.write(SednaProtocol.formReply("reject"));
+            conn.write(SednaProtocol.formReply(session, "reject"));
             conn.flush();
             //conn.close();
             return false;
@@ -97,7 +98,7 @@ class ReadyState implements SednaState {
                         if (element.endsWith(source)) {
                             Value cv = new Value(element);
                             if ((ts + far) <= cv.getTimeStamp()) {
-                                conn.write(SednaProtocol.formReply("outdated"));
+                                conn.write(SednaProtocol.formReply(session, "outdated"));
                                 conn.flush();
                                 //conn.close();
                                 return true;
@@ -114,7 +115,7 @@ class ReadyState implements SednaState {
                     //means data was saved as one element
                     Value cv = new Value(curValue);
                     if ((ts + far) <= cv.getTimeStamp()) {
-                        conn.write(SednaProtocol.formReply("outdated"));
+                        conn.write(SednaProtocol.formReply(session, "outdated"));
                         conn.flush();
                         //conn.close();
                         return true;
@@ -129,11 +130,13 @@ class ReadyState implements SednaState {
             }
             
             String dataMoveOut = cluster.getDataMoveOutTarget(vNode);
+            LOG.debug("DataMoveOut: " + dataMoveOut);
             if (writeIn && dataMoveOut != null) {
                 String[] rNodeList = dataMoveOut.split(",");
                 int needReplies = rNodeList.length;
                 int getReplies = 0;
                 for (String rnode:rNodeList){
+                    LOG.debug("DataMoveOut to: " + rnode);
                     String ip = rnode.split(":")[0];
                     int port = Integer.parseInt(rnode.split(":")[1]);
                     BlockSender bs = new BlockSender(ip, port);
@@ -144,17 +147,20 @@ class ReadyState implements SednaState {
                     }
                 }
                 if (getReplies == needReplies){
-                    conn.write(SednaProtocol.formReply("ok"));
+                    conn.write(SednaProtocol.formReply(session, "ok"));
                     conn.flush();
                     //conn.close();
                     return true;
                 }
-            }
-            if (writeIn && dataMoveOut == null){
-                conn.write(SednaProtocol.formReply("ok"));
+            } else if (writeIn && dataMoveOut == null){
+                conn.write(SednaProtocol.formReply(session, "ok"));
                 conn.flush();
                 //conn.close();
                 return true;
+            } else {
+                LOG.error("There are some error hapeens when executes here");
+                conn.write(SednaProtocol.formReply(session, "false"));
+                conn.flush();
             }
             return true;
         }
@@ -163,7 +169,8 @@ class ReadyState implements SednaState {
     public Object cget(String Key, INonBlockingConnection conn) throws IOException, BufferOverflowException {
         int virt = sed.getCHash().virt((String) Key);
         String vNode = String.format("%08d", virt);
-
+        boolean sendOut = false;
+        
         LOG.debug("cget key: " + Key + " in virtual node: " + vNode);
 
         String[] rnodes = cluster.getVnodeItems(vNode);
@@ -171,8 +178,10 @@ class ReadyState implements SednaState {
 
         if (rnodes == null || rnodes.length == 0) {
             zks.syncVnode(vNode);
-            rnodes = cluster.getVnodeItems(vNode);
         }
+        
+        rnodes = cluster.getVnodeItems(vNode);
+        
         if (rnodes.length == 0 || rnodes == null) {
             LOG.debug("cget vnode stored still is 0, something is wrong");
             try {
@@ -189,45 +198,108 @@ class ReadyState implements SednaState {
             }
             return true;
         }
-        if (rnodes.length < 3) {
-            DataDupMaintainTask ddmt = new DataDupMaintainTask(sed, vNode);
-            ddmt.start();
+        
+        if (rnodes.length == 1 && rnodes[0].equals("")){
+            try {
+                conn.write(SednaProtocol.formReply("nonexist"));
+                conn.flush();
+            } catch (Exception ex) {
+            }
+            return true;
         }
+        
+        String myName = sed.getMyRealName();
+        
+        if (rnodes.length < 3 && !cluster.getVnodeItem(vNode).contains(myName)) {
+
+            DataDupMaintainTask ddmt = new DataDupMaintainTask(sed, vNode);
+            sed.addToThreadPool(ddmt);
+            //ddmt.start();
+        }
+        /*
         IDataHandler idh = new ReadQuorumHandler(sed, Key, rnodes.length);
         for (String r : rnodes) {
             LOG.debug("cget key: " + Key + " vnode: " + vNode + " from: " + r + " rnodes: " + rnodes.length);
             String[] IpPort = r.split(":");
-            String ip = IpPort[0];
-            int port = Integer.parseInt(IpPort[1]);
-
-            NonBlockSender nbs = null;
-            try{
+            if (IpPort.length == 2){
+                String ip = IpPort[0];
+                int port = Integer.parseInt(IpPort[1]);
+                
+                NonBlockSender nbs = null;
                 nbs = new NonBlockSender(ip, port, idh);
-            } catch (IOException ioex) {
-                if (ioex instanceof BindException)
-                    nbs = new NonBlockSender(ip, port, idh);
+                
+                if ( nbs != null && nbs.getConnection() != null ){
+                    cluster.addAioItem(nbs.getConnection(), conn);
+                    String command = SednaProtocol.formCommand("get", Key);
+                    nbs.send(command);
+                    sendOut = true;
+                }
             }
-            cluster.addAioItem(nbs.getConnection(), conn);
-            String command = SednaProtocol.formCommand("get", Key);
-            LOG.debug("cget key: " + Key + " command: " + command);
-            nbs.send(command);
-        }        
+        } 
+        */
+        //Every cget has a session
+        
+        Session s = new Session(Key, rnodes.length, conn);
+        
+        for (String r : rnodes) {
+            String[] IpPort = r.split(":");
+            if (IpPort.length == 2){
+                String ip = IpPort[0];
+                int port = Integer.parseInt(IpPort[1]);
+                
+                NonBlockSender nbs = cluster.getSenderInPool(r);
+                
+                if (nbs == null){
+                    IDataHandler idh = new RQuorumHandler(sed);
+                    nbs = new NonBlockSender(ip, port, idh);
+                    cluster.addSenderInPool(r, nbs);
+                }
+                
+                if (!nbs.getConnection().isOpen()){
+                    IDataHandler idh = new RQuorumHandler(sed);
+                    nbs = new NonBlockSender(ip, port, idh);
+                    cluster.forceUpdateSenderInPool(r, nbs);
+                }
+                
+                cluster.setSession(s.getUID(), s);
+                String session_id = String.valueOf(s.getUID());
+                
+                String command = SednaProtocol.formCommand("get", session_id, Key);
+                nbs.send(command);
+                sendOut = true;
+ 
+            }
+        }
+        if ( !sendOut ){
+            try {
+                conn.write(SednaProtocol.formReply("nonexist"));
+                conn.flush();
+            } catch (Exception ex) {
+            }
+        }
+        
         return true;
     }
 
     public boolean cset(String Key, String Value, INonBlockingConnection conn) throws IOException, BufferOverflowException {
         int virt = sed.getCHash().virt((String) Key);
         String vNode = String.format("%08d", virt);
-
+        boolean sendOut = false;
+        
         String[] rnodes = cluster.getVnodeItems(vNode);
         ZooKeeperService zks = sed.getZooKeeperService();
-        if (rnodes == null || rnodes.length == 0) {
+        
+        if (rnodes == null || rnodes.length == 0 
+                || (rnodes.length == 1 && rnodes[0].equals(""))) {
             try {
                 zks.lock(vNode);
-                if (rnodes == null || rnodes.length == 0)
+                zks.syncVnode(vNode);
+                rnodes = cluster.getVnodeItems(vNode);
+                if (rnodes.length == 1 && rnodes[0].equals("")){
                     zks.setVNodeValue(vNode, sed.getMyRealName());
+                    cluster.addVNodeForMe(vNode);
+                }
                 zks.unlock(vNode);
-                cluster.addVNodeForMe(vNode);
                 //set(Key, Value, conn);
             } catch (Exception ex) {
                 LOG.error("cset length=0 error");
@@ -235,40 +307,80 @@ class ReadyState implements SednaState {
             //conn.write(SednaProtocol.formReply("ok"));
             //return true;
         }
-        if (rnodes == null || rnodes.length == 0){
+        if (rnodes.length == 1 && rnodes[0].equals("")){
             zks.syncVnode(vNode);
             rnodes = cluster.getVnodeItems(vNode);
         }
-        LOG.debug("cset rnodes size: " + rnodes.length);
+        
+        String myName = sed.getMyRealName();
+        
+        if (rnodes.length < 3 && !cluster.getVnodeItem(vNode).contains(myName)) {
+            DataDupMaintainTask ddmt = new DataDupMaintainTask(sed, vNode);
+            sed.addToThreadPool(ddmt);
+            //ddmt.start();
+        }
+        /*
         IDataHandler idh = new WriteQuorumHandler(sed, Key, rnodes.length);
         for (String r : rnodes) {
             LOG.debug("cset key: " + Key + " rnode size: " + rnodes.length + " real node: " + r);
             String[] IpPort = r.split(":");
-            String ip = IpPort[0];
-            int port = Integer.parseInt(IpPort[1]);
-
-            NonBlockSender nbs = null;
-            try{
+            if (IpPort.length == 2){
+                String ip = IpPort[0];
+                int port = Integer.parseInt(IpPort[1]);
+                
+                NonBlockSender nbs = null;
+                
                 nbs = new NonBlockSender(ip, port, idh);
-            } catch (IOException ioex){
-                if (ioex instanceof BindException){
-                    LOG.error("cset nonblocking sender can not bind address " + Key);
-                    nbs = new NonBlockSender(ip, port, idh);
+                
+                if ( nbs != null && nbs.getConnection() != null){
+                    cluster.addAioItem(nbs.getConnection(), conn);
+                    String command = SednaProtocol.formCommand("set", Key, Value);
+                    nbs.send(command);
+                    sendOut = true;
                 }
             }
-            if (nbs == null){
-                LOG.error("cset NonBlockingSender Still can not bind address " + Key);
-                continue;
+        }*/
+        //Every cset operation has a unique session. 
+        
+        Session s = new Session(Key, Value, rnodes.length, conn);
+        
+        for (String r : rnodes) {
+            String[] IpPort = r.split(":");
+            if (IpPort.length == 2){
+                String ip = IpPort[0];
+                int port = Integer.parseInt(IpPort[1]);
+                
+                NonBlockSender nbs = cluster.getSenderInPool(r);
+                
+                if (nbs == null){
+                    IDataHandler idh = new WQuorumHandler(sed);
+                    nbs = new NonBlockSender(ip, port, idh);
+                    cluster.addSenderInPool(r, nbs);
+                }
+                
+                if (!nbs.getConnection().isOpen()){
+                    IDataHandler idh = new WQuorumHandler(sed);
+                    nbs = new NonBlockSender(ip, port, idh);
+                    cluster.forceUpdateSenderInPool(r, nbs);
+                }
+                
+                cluster.setSession(s.getUID(), s);
+                String session_id = String.valueOf(s.getUID());
+                
+                String command = SednaProtocol.formCommand("set", session_id, Key, Value);
+                nbs.send(command);
+                sendOut = true;
+ 
             }
-            cluster.addAioItem(nbs.getConnection(), conn);
-            String command = SednaProtocol.formCommand("set", Key, Value);
-            nbs.send(command);
-            
         }
-        if (rnodes.length < 3) {
-            DataDupMaintainTask ddmt = new DataDupMaintainTask(sed, vNode);
-            ddmt.start();
+        if (!sendOut){
+            try {
+                conn.write(SednaProtocol.formReply("nonexist"));
+                conn.flush();
+            } catch (Exception ex) {
+            }
         }
+        
         return true;
     }
 
@@ -279,6 +391,7 @@ class ReadyState implements SednaState {
      */
     public void dataMoveOut(String rnode, String vnode, int type, INonBlockingConnection conn) throws IOException, BufferOverflowException {
 
+        LOG.error("Receive dataMoveOut Command From " + rnode + " for " + vnode);
         cluster.addDataMoveOutTarget(vnode, rnode);
         ZooKeeperService zks = sed.getZooKeeperService();
 
@@ -288,26 +401,46 @@ class ReadyState implements SednaState {
         return;
     }
 
-    public void datadupIn(String vnode, INonBlockingConnection conn) {
+    public void datadupIn(String vnode, INonBlockingConnection conn){
+        String ip = conn.getRemoteAddress().getHostAddress();
+        String port = sed.getConf().getValue("tcp_server_port");
+        
+        sed.getLocalStorage().duplicate(vnode, ip+":"+port);
+        try {
+            conn.write(SednaProtocol.formReply("ok"));
+            conn.flush();
+        } catch (IOException ex) {
+            LOG.error("datadupIn IOException");
+        } catch (BufferOverflowException ex) {
+            LOG.error("datadpuIn BufferOverFlowException");
+        }
+    }
+
+    public void datadupInOld(String vnode, INonBlockingConnection conn) {
         ZooKeeperService zks = sed.getZooKeeperService();
 
         try {
-            conn.write(SednaProtocol.formReply("ok"));
-
+            
             zks.lock(vnode);
 
             zks.syncVnode(vnode);
 
             String[] rnodes = cluster.getVnodeItems(vnode);
+            
             if (rnodes.length == 3) {
                 zks.unlock(vnode);
+                conn.write(SednaProtocol.formReply("ok"));
+                conn.flush();
                 return;
             }
 
             Random rand = new Random(System.currentTimeMillis());
             int i = Math.abs(rand.nextInt()) % rnodes.length;
             String rnode = rnodes[i];
-
+            boolean needDupData = false;
+            
+            /* @TODO: do not need this code because dups do not need forward write operations
+             * 
             String ip = rnode.split(":")[0];
             int port = Integer.parseInt(rnode.split(":")[1]);
 
@@ -318,37 +451,55 @@ class ReadyState implements SednaState {
                 zks.unlock(vnode);
                 return;
             }
+            */
+            String rs = null;
+            int size = rnodes.length;
+            String myName = sed.getMyRealName();
+            
+            if (size == 1) {
+                if (rnodes[0].equals(myName)){
+                    rs = myName;
+                } else if (rnodes[0].equals("")){
+                    rs = myName;
+                } else {
+                    rs = rnodes[0] + "," + myName;     
+                    needDupData = true;
+                }
+            } else if (size == 2 ) {
+                if (rnodes[0].equals(myName) 
+                        || rnodes[1].equals(myName)){
+                    rs = rnodes[0] + "," + rnodes[1];
+                } else {
+                    rs = rnodes[0] + "," + rnodes[1] + "," + myName;    
+                    needDupData = true;
+                }
+            } else if (size == 3) {
+                rs = rnodes[0] + "," + rnodes[1] + "," + rnodes[2];
+            }
+            
+            zks.setVNodeValue(vnode, rs);
 
-            /* @TODO: Modify MemCached
+            cluster.addVNodeForMe(vnode);
+
+            zks.unlock(vnode);
+            
+             /* @TODO: Modify MemCached
              * There are two ways to finish data duplicate:
              * 1, node establish a remote memcached connnection and ask that instance
              * begin to duplicate data in local to itself.
              * 2, node connects to local memcached, and ask local instance begin to 
              * trasfer data from a remote memcached client.
              */
-
             /*
             RemoteMemCached rmc = new RemoteMemCached(rnode, sed.getConf());
             rmc.transfer(vnode);
              */
-            while(!sed.getLocalStorage().duplicate(vnode, rnode)){
-                LOG.error("Duplicate Command Error");
+            if (needDupData){
+                sed.getLocalStorage().duplicate(vnode, rnode);
+                LOG.debug("Duplicate Command. vnode: " + vnode + " rnode: " + rnode);
             }
-
-            String rs = null;
-            int size = rnodes.length;
-            if (size == 1) {
-                rs = rnodes[0] + "," + sed.getMyRealName();
-            }
-            if (size == 2) {
-                rs = rnodes[0] + "," + rnodes[1] + "," + sed.getMyRealName();
-            }
-            zks.setVNodeValue(vnode, rs);
-
-            cluster.addVNodeForMe(vnode);
-
-            zks.unlock(vnode);
-
+            conn.write(SednaProtocol.formReply("ok"));
+            conn.flush();
             return;
         } catch (KeeperException ex) {
             LOG.error("data move in error KeeperException");
@@ -364,6 +515,7 @@ class ReadyState implements SednaState {
     }
 
     public void dataMoveIn(String vnode, String rnodeSub, INonBlockingConnection conn) throws IOException, BufferOverflowException {
+        LOG.error("DataMoveIn Process ========BIG WARNING==========");
         ZooKeeperService zks = sed.getZooKeeperService();
 
         try {
@@ -393,7 +545,6 @@ class ReadyState implements SednaState {
                 zks.unlock(vnode);
                 return;
             }
-
             //Data Transfor Request, BLOCKING EXECUTING
             /* @TODO: Modify MemCached
              * There are two ways to finish data transfer:
@@ -406,8 +557,8 @@ class ReadyState implements SednaState {
             RemoteMemCached rmc = new RemoteMemCached(rnode, sed.getConf());
             rmc.transfer(vnode);
             */
-
-            while(!sed.getLocalStorage().transfer(vnode, rnode)){
+            String addr = rnode.split(":")[0];
+            while(!sed.getLocalStorage().transfer(vnode, addr)){
                 LOG.debug("Transfer Command Error");
             }
 
@@ -447,11 +598,16 @@ class ReadyState implements SednaState {
 
         Cluster c = sed.getCluster();
         Configuration conf = sed.getConf();
+        
+        int threadPoolSize = Integer.parseInt(conf.getValue("thread_pool_size"));
+        sed.setThreadPool(Executors.newFixedThreadPool(threadPoolSize));
+        
         int moveDataThreadNum = Integer.parseInt(conf.getValue("move_data_threads"));
 
         for (int i = 0; i < moveDataThreadNum; i++) {
             DataMoveInTask dmit = new DataMoveInTask(sed);
-            dmit.start();
+            //dmit.start();
+            sed.addToThreadPool(dmit);
         }
 
         LOG.error("Sedna Start Over at: " + System.currentTimeMillis());

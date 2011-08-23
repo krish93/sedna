@@ -46,6 +46,8 @@ public class ZooKeeperService implements Watcher{
     public static String rnodeDir = baseDir + "real_node";
     public static String vnodeDir = baseDir + "virt_node";
     public static String changeVNodeDir = baseDir + "change_node";
+    public static String dupFlagDir = baseDir + "dup_flag";
+    public static String movFlagDir = baseDir + "move_flag";
     
     private byte[] data = {0x12, 0x34};
     private AtomicBoolean close = new AtomicBoolean(false);
@@ -138,8 +140,7 @@ public class ZooKeeperService implements Watcher{
     public void debugInitNodes(){
         try {
             zk.setData(vnodeDir, "".getBytes(), -1);
-        } catch (KeeperException ex) {
-            LOG.error("debugInitNodes error KeeperException");
+        } catch (KeeperException ex){
         } catch (InterruptedException ex) {
             LOG.error("debugInitNodes error InterruptedException");
         }
@@ -157,7 +158,6 @@ public class ZooKeeperService implements Watcher{
                 LOG.debug("initVNodes enter");
                 lock("init");
                 LOG.debug("initVNodes lock init, Obtain Lock");
-                
                 if (sync(vnodeDir).equals("done")) {
                     return;
                 }
@@ -176,6 +176,8 @@ public class ZooKeeperService implements Watcher{
                     byte[] t = "".getBytes();
                     if (zk.exists(vnodeDir + "/" + i, false) == null)
                         zk.create(vnodeDir + "/" + i, t, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+                    else
+                        zk.setData(vnodeDir + "/" + i, t, -1);
                 }
                 zk.setData(vnodeDir, "done".getBytes(), -1);
                 unlock("init");
@@ -316,11 +318,11 @@ public class ZooKeeperService implements Watcher{
             this.type = type;
         }
         public void process(WatchedEvent event){
+            LOG.error("VNodeWatch for vnode: " + vnode + " triggers");
             if (type == 0){
                 sed.getCluster().vnodeStored().remove(vnode);
-                //@TODO: ask localstorage delete this vnode
             }
-            sed.getCluster().delDataMoveOutTarget(vnode);
+            sed.getCluster().delDataMoveOutTarget(vnode, sed.getMyRealName());
         }
     }
     public String sync(String path) {
@@ -507,5 +509,61 @@ public class ZooKeeperService implements Watcher{
                 lockDirId.remove(dir);
             }
         }
+    }
+    
+    public boolean dup_thread_start(String vNode){
+        try {
+            if (zk.exists(dupFlagDir+"/"+vNode, false) != null)
+                return false;
+            
+            zk.create(dupFlagDir+"/"+vNode, "".getBytes(), null, CreateMode.PERSISTENT);
+        } catch (KeeperException ex) {
+            if (ex instanceof KeeperException.NodeExistsException){
+                return false;
+            }
+        } catch (InterruptedException ex) {
+            return false;
+        }
+        return true;
+    }
+    
+    public boolean dup_thread_stop(String vNode){
+        try {
+            zk.delete(dupFlagDir+"/"+vNode, -1);
+        } catch (InterruptedException ex) {
+            return false;
+        } catch (KeeperException ex) {
+            if (ex instanceof KeeperException.NoNodeException){
+                return true;
+            }
+        }
+        return true;
+    }
+    
+    public boolean mov_thread_start(String vNode){
+        try {
+            if (zk.exists(movFlagDir+"/"+vNode, false) != null)
+                return false;
+            zk.create(movFlagDir+"/"+vNode, "".getBytes(), null, CreateMode.PERSISTENT);
+        } catch (KeeperException ex) {
+            if (ex instanceof KeeperException.NodeExistsException)
+                return false;
+        } catch (InterruptedException ex) {
+            return false;
+        }
+        return true;
+    }
+    
+    public boolean mov_thread_stop(String vNode){
+        try {
+            zk.delete(movFlagDir+"/"+vNode, -1);
+        } catch (InterruptedException ex) {
+            return false;
+        } catch (KeeperException ex) {
+            if (ex instanceof KeeperException.NoNodeException){
+                return true;
+            }
+        }
+        return true;
     }
 }

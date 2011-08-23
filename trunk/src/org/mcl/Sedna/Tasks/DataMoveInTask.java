@@ -39,6 +39,9 @@ public class DataMoveInTask extends Thread {
         this.zks = sed.getZooKeeperService();
     }
 
+    /*
+     * @TODO: Modify this code from using Lock to using just zks.mov_thread_start.
+     */
     @Override
     public void run() {
         
@@ -74,26 +77,17 @@ public class DataMoveInTask extends Thread {
                         exists = cluster.vnodeStored().contains(vnodeStr);
                         
                     }
-                    LOG.debug("DataMoveInTask Stage 2.6 " + this);
                     if (exists){
                         LOG.debug("DataMoveInTask, still can not random a correct node, return");
                         return;
                     }
-                    LOG.debug("DataMoveInTask Stage 2.7 " + this);
                     vnode = String.format("%08d", vnodeInt);
-                    LOG.debug("DataMoveInTask Stage 2.8 " + vnode + " "+ this);
                     
                     zks.lock(vnode);
-
-                    LOG.debug("DataMoveInTask - Lock: " + vnode);
                     
                     zks.syncVnode(vnode);
 
-                    LOG.debug("DataMoveInTask - syncVNode: " + vnode);
-                    LOG.debug("DataMoveInTask Stage 2.9 " + this);
                     String[] rnodes = cluster.getVnodeItems(vnode);
-
-                    LOG.debug("DataMoveInTask: rnodes size: " + rnodes.length);
                     
                     String rnode = null;
                     String localName = sed.getMyRealName();
@@ -111,7 +105,6 @@ public class DataMoveInTask extends Thread {
                         //just assign to this new node is fine, if two real nodes
                         //are equal, just return. data movement is needed.
                         if ( rnodes[0].equals("") || rnodes[0].equals(" ")){
-                            LOG.debug("DataMoveInTask Stage 3(1)...rnodes length = 1, and equal to SPACE" + this);
                             zks.setVNodeValue(vnode, localName);
                             cluster.addVNodeForMe(vnode);
                             datamove = false;
@@ -167,7 +160,9 @@ public class DataMoveInTask extends Thread {
                             datadup = false;
                         }
                     }
-                    
+                    /*
+                     * In current design, datamove never happens in DataMoveInTask
+                     *
                     if (datamove) {
                         LOG.debug("DataMoveInTask, need datamove...This should not happen in stand alone mode");
                         String ip = rnode.split(":")[0];
@@ -175,10 +170,10 @@ public class DataMoveInTask extends Thread {
                         BlockSender bs = new BlockSender(ip, port);
                         bs.send(SednaProtocol.formCommand("moveout", vnode, sed.getMyRealName(), "0"));
 
-                        int retries = 3;
+                        int retries = 2;
 
-                        while (SednaProtocol.deCompReply(bs.getConnection()).equals("ok")
-                                && retries-- > 0) {
+                        while (!SednaProtocol.deCompReply(bs.getConnection()).equals("ok")
+                                && --retries > 0) {
                             bs.send(SednaProtocol.formCommand("moveout", vnode, sed.getMyRealName(), "0"));
                         }
 
@@ -187,18 +182,29 @@ public class DataMoveInTask extends Thread {
                         if (retries > 0) {
                             //Data Transfor Request, BLOCKING EXECUTING
                         }
-                    } else if (datadup) {
-                        LOG.debug("DataMoveInTask, need datadup...This should not happen in stand alone mode");
+                    } else*/
+                    if (datadup) {
+                        String ip_addr = rnode.split(":")[0];
+                        int ip_port = Integer.parseInt(rnode.split(":")[1]);
+                        BlockSender bs = new BlockSender(ip_addr, ip_port);
+                        bs.send(SednaProtocol.formCommand("dupin", vnode));
+                        
+                        SednaProtocol.deCompReply(bs.getConnection());
+                        /*
+                        sed.getLocalStorage().duplicate(vnode, rnode);
+                        LOG.error("DataMoveInTask Duplicate Command Execute");
+                        */
+                        /*
                         String ip = rnode.split(":")[0];
                         int port = Integer.parseInt(rnode.split(":")[1]);
                         BlockSender bs = new BlockSender(ip, port);
                         
                         bs.send(SednaProtocol.formCommand("moveout", vnode, sed.getMyRealName(), "1"));
 
-                        int retries = 3;
+                        int retries = 2;
 
-                        while (SednaProtocol.deCompReply(bs.getConnection()).equals("ok")
-                                && retries-- > 0) {
+                        while (!SednaProtocol.deCompReply(bs.getConnection()).equals("ok")
+                                && --retries > 0) {
                             bs.send(SednaProtocol.formCommand("moveout", vnode, sed.getMyRealName(), "1"));
                         }
 
@@ -207,11 +213,10 @@ public class DataMoveInTask extends Thread {
                         if (retries > 0) {
                             //Data Transfor Request, BLOCKING EXECUTING
                         }
+                        */
                     }
-                    LOG.debug("DataMoveInTask, Stage 4...");
-                    cluster.addVNodeForMe(vnode);
+                    //cluster.addVNodeForMe(vnode);
                     zks.unlock(vnode);
-                    LOG.debug("DataMoveInTask, Stage 5...");
                     try {
                         sleep(DataMoveInThreadInterval);
                     } catch (Exception ex) {

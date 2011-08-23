@@ -35,21 +35,23 @@ public class SednaProtocol {
         int size = args.keySet().size();
 
         if ("get".equalsIgnoreCase(command)){
-            if (size != 1)
+            if (size != 2)
                 return;
             else{
-                String key = args.get("arg0");
-                sed.get(key, nbc);
+                String session = args.get("arg0");
+                String key = args.get("arg1");
+                sed.get(session, key, nbc);
             }
         }
 
         if ("set".equalsIgnoreCase(command)){
-            if (size != 2){
+            if (size != 3){
                 return ;
             } else {
-                String key = args.get("arg0");
-                String value = args.get("arg1");
-                sed.set(key, value, nbc);
+                String session = args.get("arg0");
+                String key = args.get("arg1");
+                String value = args.get("arg2");
+                sed.set(session, key, value, nbc);
             }
         }
 
@@ -136,9 +138,33 @@ public class SednaProtocol {
                 arg2.length()+"\r\n"+arg2+"\r\n";        
         return rtn;
     }
+    public static String[] deCompSessionReply(INonBlockingConnection inbc) {
 
+        inbc.markReadPosition();
+        
+        String[] rtn = null;
+        String session = null;
+        String value = null;
+        try {
+            if (inbc.isOpen()){
+                session = inbc.readStringByDelimiter("\r\n");
+                value = inbc.readStringByDelimiter("\r\n");
+                rtn = new String[2];
+                rtn[0] = session;
+                rtn[1] = value;
+            }
+        } catch (BufferUnderflowException bus){
+            inbc.resetToReadMark();
+            return null;
+        } catch (IOException ex) {
+            LOG.error("INonBlockingConnection deCompReply IOException");
+        }
+        return rtn;
+    }
     public static String deCompReply(INonBlockingConnection inbc) {
 
+        inbc.markReadPosition();
+        
         String rtn = null;
         try {
             if (inbc.isOpen()){
@@ -149,7 +175,8 @@ public class SednaProtocol {
                 rtn = inbc.readStringByDelimiter("\r\n");
             }
         } catch (BufferUnderflowException bus){
-            LOG.error("INonBlockingConnection deCompReply BufferUnderflowException");
+            inbc.resetToReadMark();
+            return null;
         } catch (IOException ex) {
             LOG.error("INonBlockingConnection deCompReply IOException");
         }
@@ -158,6 +185,8 @@ public class SednaProtocol {
     
     public static String deCompReply(IBlockingConnection ibc) {
 
+        ibc.markReadPosition();;
+        
         String rtn = null;
         try {
             if (ibc.isOpen()){
@@ -168,7 +197,8 @@ public class SednaProtocol {
                 rtn = ibc.readStringByDelimiter("\r\n");
             }
         } catch (BufferUnderflowException bus){
-            LOG.error("IBlockingConnection deCompReply BufferUnderflowException");
+            ibc.resetToReadMark();
+            return null;
         } catch (IOException ex) {
             LOG.error("IBlockingConnection deCompReply IOException on connection: "+ibc);
         }
@@ -176,6 +206,10 @@ public class SednaProtocol {
     }
     public static String formReply(String value){
         String rtn = (value == null?0:value.length()) + "\r\n" + value + "\r\n";
+        return rtn;
+    }
+    public static String formReply(String session, String value){
+        String rtn = session + "\r\n" + value + "\r\n";
         return rtn;
     }
     

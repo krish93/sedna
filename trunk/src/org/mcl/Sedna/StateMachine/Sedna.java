@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.BufferOverflowException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.log4j.Logger;
 import org.mcl.Sedna.CHash.HashAlgorithm;
@@ -47,10 +48,11 @@ public class Sedna {
 
     private AtomicLong leaseTime = null;
     private String myRealName = null;
-
+    private ExecutorService pool = null;
+    
     public int READQUORUM = 2;
     public int WRITEQUORUM = 2;
-    
+
     public Sedna(){
 
         cluster = new Cluster();
@@ -65,6 +67,8 @@ public class Sedna {
         WRITEQUORUM = Integer.parseInt(conf.getValue("write_quorum"));
         
         try {
+            //this code snape look for IP address by looking at /etc/hosts file according
+            //localhost's name.
             myRealName = InetAddress.getLocalHost().getHostAddress();
             String port = conf.getValue("tcp_server_port");
             myRealName = myRealName + ":" + port;
@@ -78,6 +82,15 @@ public class Sedna {
         this.currentState = initState;
     }
 
+    public ExecutorService getThreadPool(){
+        return this.pool;
+    }
+    public void setThreadPool(ExecutorService es){
+        this.pool = es;
+    }
+    public void addToThreadPool(Thread t){
+        pool.execute(t);
+    }
     public ZooKeeperService getZooKeeperService(){
         return this.zks;
     }
@@ -142,11 +155,11 @@ public class Sedna {
     }
 
 
-    public void set(String Key, String Value, INonBlockingConnection conn) throws IOException, BufferOverflowException{
-        currentState.set(Key, Value, conn);
+    public void set(String session, String Key, String Value, INonBlockingConnection conn) throws IOException, BufferOverflowException{
+        currentState.set(session, Key, Value, conn);
     }
-    public void get(String Key, INonBlockingConnection conn) throws IOException, BufferOverflowException{
-        currentState.get(Key, conn);
+    public void get(String session, String Key, INonBlockingConnection conn) throws IOException, BufferOverflowException{
+        currentState.get(session, Key, conn);
     }
     public void cset(String Key, String Value, INonBlockingConnection conn) throws IOException, BufferOverflowException{
         currentState.cset(Key, Value, conn);

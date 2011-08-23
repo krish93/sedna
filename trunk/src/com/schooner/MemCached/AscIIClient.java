@@ -304,7 +304,8 @@ public class AscIIClient extends MemCachedClient {
 		return set("replace", key, value, expiry, hashCode, 0L, primitiveAsString);
 	}
 	// added by Daidong
-    public boolean duplicate(String vnode, String dst){
+
+                    public boolean duplicate(String vnode, String dst){
 		return duplicate("duplicate", vnode, dst, true);
 	}
 	private boolean duplicate(String cmdname, String vnode, String dst, boolean asString){

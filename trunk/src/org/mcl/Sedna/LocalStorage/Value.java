@@ -98,13 +98,21 @@ public class Value {
     public Value(String bundles){
         String[] elements = bundles.split("\\+");
         if (elements.length != 5){
-            LOG.error("Parse Data Bundles Error");
+            LOG.error("Parse Data Bundles Error: " + bundles);
         }
         this.key = elements[0];
         this.data = elements[1];
         this.timestamp = Long.parseLong(elements[2]);
         this.farsee = Long.parseLong(elements[3]);
         this.source = elements[4];
-        LOG.debug(this.data+"+"+this.timestamp+"+"+this.source);
+    }
+    
+    public static boolean isValue(String bundles){
+        if (bundles == null)
+            return false;
+        String[] elements = bundles.split("\\+");
+        if (elements.length != 5)
+            return false;
+        return true;
     }
 }
