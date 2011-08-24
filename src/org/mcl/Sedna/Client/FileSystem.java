@@ -63,6 +63,7 @@ public class FileSystem {
         }
         bs.send(command);
         String reply = SednaProtocol.deCompReply(bs.getConnection());
+        
         if (reply == null){
             LOG.error("SednaProtocl deCompRely return null. Key: " + key);
             return FALSE;
