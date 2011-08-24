@@ -14,14 +14,15 @@ Add your content here.
 === 2.2.1 Memcached Install ===
 
 To run Sedna on your server, you need memcached to be installed first. In Sedna package, we have provided a memcached distribution, which can be automatically stared by our start-up script. However, before run start-up script, you need first compile memcached for your machine. Steps are:
-# cd ${Sedna_home}/memcached
-# ./configure
-# make
+
+  # cd ${Sedna_home}/memcached
+  # ./configure
+  # make
 
 Before do these install steps, make sure your machine has installed fellowing programs:
-* gcc
-* make
-* libevent
+  * gcc
+  * make
+  * libevent
 
 === 2.2.2 Jetty Server Install ===
 === 2.2.3 ZooKeeper Install ===
