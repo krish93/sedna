@@ -27,6 +27,16 @@ Before do these install steps, make sure your machine has installed fellowing pr
 
 == 2.2 System Modify for Linux ==
 
+=== 2.2.1 Hosts ===
+
+We highly recommend users modify /etc/hosts file in servers. As in Sedna we use InetAddress.getHostAddr() to get local machine's IP address and use Jetty to start a local web server. So the best way to avoid not necessary problems is modify /etc/hosts file, and try to find every machine by their name, like nodek.
+
+Remove 127.0.0.1 or :::1's name if their name columns include host name. Add a new line like this:
+
+  * 192.168.1.15 node1
+
+
+
 == 2.3 Configuration ==
 
 
