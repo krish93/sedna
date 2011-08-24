@@ -71,7 +71,7 @@ class ReadyState implements SednaState {
     }
 
     public boolean set(String session, String Key, String value, INonBlockingConnection conn) throws IOException, BufferOverflowException {
-        LOG.debug("In ReadyState, Set Command, Key: " + Key + " Value: " + value + " connection: " + conn);
+        LOG.debug("In ReadyState, Set Command, Key: " + Key);
         int virt = sed.getCHash().virt((String) Key);
         String vNode = String.format("%08d", virt);
         
@@ -242,23 +242,25 @@ class ReadyState implements SednaState {
         Session s = new Session(Key, rnodes.length, conn);
         
         for (String r : rnodes) {
+            LOG.error("cget session: " + s.getUID() + " key: " + s.key);
+            
             String[] IpPort = r.split(":");
             if (IpPort.length == 2){
                 String ip = IpPort[0];
                 int port = Integer.parseInt(IpPort[1]);
                 
-                NonBlockSender nbs = cluster.getSenderInPool(r);
+                NonBlockSender nbs = cluster.getSenderInPool(r+"r");
                 
                 if (nbs == null){
                     IDataHandler idh = new RQuorumHandler(sed);
                     nbs = new NonBlockSender(ip, port, idh);
-                    cluster.addSenderInPool(r, nbs);
+                    cluster.addSenderInPool(r+"r", nbs);
                 }
                 
                 if (!nbs.getConnection().isOpen()){
                     IDataHandler idh = new RQuorumHandler(sed);
                     nbs = new NonBlockSender(ip, port, idh);
-                    cluster.forceUpdateSenderInPool(r, nbs);
+                    cluster.forceUpdateSenderInPool(r+"r", nbs);
                 }
                 
                 cluster.setSession(s.getUID(), s);
@@ -343,25 +345,26 @@ class ReadyState implements SednaState {
         //Every cset operation has a unique session. 
         
         Session s = new Session(Key, Value, rnodes.length, conn);
-        
+        LOG.error("===========Session: " + s.getUID() + " key: " + s.key);
         for (String r : rnodes) {
+            LOG.debug("Send set request for key: " + Key);
             String[] IpPort = r.split(":");
             if (IpPort.length == 2){
                 String ip = IpPort[0];
                 int port = Integer.parseInt(IpPort[1]);
                 
-                NonBlockSender nbs = cluster.getSenderInPool(r);
+                NonBlockSender nbs = cluster.getSenderInPool(r+"w");
                 
                 if (nbs == null){
                     IDataHandler idh = new WQuorumHandler(sed);
                     nbs = new NonBlockSender(ip, port, idh);
-                    cluster.addSenderInPool(r, nbs);
+                    cluster.addSenderInPool(r+"w", nbs);
                 }
                 
                 if (!nbs.getConnection().isOpen()){
                     IDataHandler idh = new WQuorumHandler(sed);
                     nbs = new NonBlockSender(ip, port, idh);
-                    cluster.forceUpdateSenderInPool(r, nbs);
+                    cluster.forceUpdateSenderInPool(r+"w", nbs);
                 }
                 
                 cluster.setSession(s.getUID(), s);

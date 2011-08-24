@@ -17,6 +17,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.apache.log4j.Logger;
 import org.mcl.Sedna.Communication.NonBlockSender;
 import org.mcl.Sedna.Communication.Session;
+import org.mcl.Sedna.Communication.SessionHandler;
 import org.mcl.Sedna.Utils.MD5;
 import org.xsocket.connection.INonBlockingConnection;
 
@@ -49,6 +50,7 @@ public class Cluster {
     
     private ConcurrentHashMap<String, NonBlockSender> coreSocketPool = null;
     private ConcurrentHashMap<Long, Session> sessionTable = null;
+    private ConcurrentHashMap<Long, SessionHandler> sessionHandlerTable = null;
     
     public Cluster(){
         rnodes = new ConcurrentHashMap<String, Boolean>();
@@ -63,8 +65,20 @@ public class Cluster {
         moveOutTargetTable = new HashMap<String, String>();
         coreSocketPool = new ConcurrentHashMap<String, NonBlockSender>();
         sessionTable = new ConcurrentHashMap<Long, Session>();
+        sessionHandlerTable = new ConcurrentHashMap<Long, SessionHandler>();
     }
 
+    public SessionHandler setSessionHandler(long id, SessionHandler sh){
+        return sessionHandlerTable.putIfAbsent(id, sh);
+        //sessionHandlerTable.put(id, sh);
+    }
+    public SessionHandler getSessionHandler(long id){
+        return sessionHandlerTable.get(id);
+    }
+    public void removeSessionHandler(long id){
+        if (sessionHandlerTable.containsKey(id))
+            sessionHandlerTable.remove(id);
+    }
     public void setSession(long id, Session s){
         sessionTable.put(id, s);
     }
