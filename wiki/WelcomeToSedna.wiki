@@ -1,9 +1,9 @@
 #labels Featured,Phase-Design,Phase-Implementation
-#A General Introduction to Sedna storage system
-
 = 1. Introduction =
 
-Add your content here.
+Sedna was developed and tested on Mac OS X and Fedora system, thanks to them first. :)
+
+So, please make sure you are running Linux or Mac OS X on your servers before fellowing these installation steps.
 
 = 2. Install =
 
@@ -23,7 +23,14 @@ Before do these install steps, make sure your machine has installed fellowing pr
   * libevent
 
 === 2.1.2 Jetty Server Install ===
+
+It's quite simple, only need make sure is the web port(default 10010) has not been used.
+
 === 2.1.3 ZooKeeper Install ===
+
+Install ZooKeeper in distributed mode is necessary for a serious Sedna deployment. If you want run Sedna as a test system on a few servers, a stand alone zookeeper installation is also fine.
+
+After Installing ZooKeeper, please remember the ZooKeeper cluster server list and their port, which we need to configure Sedna before start it up.
 
 == 2.2 System Modify for Linux ==
 
@@ -35,7 +42,22 @@ Remove 127.0.0.1 or :::1's name if their name columns include host name. Add a n
 
   * 192.168.1.15 node1
 
+=== 2.2.2 file-max ===
 
+The max number of files a process can open is limited in nearly all the linux distribution. You can check them using:
+{{{ 
+> ulimit -n
+}}}
+Usually 1024 in Fedora or 256 in Mac OS X. A large Sedna cluster may need more sockets than these numbers, so we recommend users to modify this value.  The best way is change files in /etc/security/limits.conf, add a row in the last line of that file:
+{{{
+* - nofile 1000000
+}}} 
+reboot and that value will begin to affect your system.
+
+It's a little different when you are working on Mac OS X, change file in /etc/launchd.conf, and a row in this file( usually this file is not exist! so you need to create it first)
+{{{
+limit maxfiles 1000000 1000000
+}}}
 
 == 2.3 Configuration ==
 
